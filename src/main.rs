@@ -79,8 +79,8 @@ impl SignalingServer {
         let client_id = client.id.clone();
         clients.insert(client_id.clone(), client);
 
-        info!("Client connected: {} (total: {})", client_id, clients.len());
 
+        info!("Client connected: {client_id} (total: {})",  clients.len());
         // Notify other clients about the new peer
         self.broadcast_to_others(
             &client_id,
@@ -93,7 +93,7 @@ impl SignalingServer {
     async fn remove_client(&self, client_id: &str) {
         let mut clients = self.clients.write().await;
         if clients.remove(client_id).is_some() {
-            info!("Client disconnected: {} (total: {})", client_id, clients.len());
+            info!("Client disconnected: {client_id} (total: {})" , clients.len());
 
             // Notify other clients about the peer leaving
             self.broadcast_to_others(
