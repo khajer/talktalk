@@ -238,3 +238,130 @@ pub async fn handle_connection(
         _ = send_task => {}
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn addr() -> SocketAddr {
+        "127.0.0.1:0".parse().unwrap()
+    }
+
+    /// Builds a Client with a fresh channel, returning it alongside the receiver
+    /// so a test can inspect whatever the server sends that client.
+    fn test_client() -> (Client, mpsc::UnboundedReceiver<Message>) {
+        let (tx, rx) = mpsc::unbounded_channel();
+        (Client::new(addr(), tx), rx)
+    }
+
+    fn parse(msg: Message) -> SignalMessage {
+        let Message::Text(text) = msg else { panic!("expected text frame") };
+        serde_json::from_str(&text).unwrap()
+    }
+
+    #[test]
+    fn offer_message_round_trips_through_tagged_json() {
+        let msg = SignalMessage::Offer {
+            from: "a".into(),
+            to: "b".into(),
+            sdp: "sdp-data".into(),
+        };
+        let json = serde_json::to_string(&msg).unwrap();
+        assert!(json.contains(r#""type":"offer""#));
+
+        match serde_json::from_str::<SignalMessage>(&json).unwrap() {
+            SignalMessage::Offer { from, to, sdp } => {
+                assert_eq!(from, "a");
+                assert_eq!(to, "b");
+                assert_eq!(sdp, "sdp-data");
+            }
+            other => panic!("expected Offer, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn add_client_registers_it_and_notifies_existing_peers() {
+        let server = SignalingServer::new();
+        let (existing, mut existing_rx) = test_client();
+        server.add_client(existing).await;
+
+        let (newcomer, _newcomer_rx) = test_client();
+        let newcomer_id = newcomer.id.clone();
+        server.add_client(newcomer).await;
+
+        assert!(server.get_all_client_ids().await.contains(&newcomer_id));
+
+        match parse(existing_rx.recv().await.unwrap()) {
+            SignalMessage::Join { client_id } => assert_eq!(client_id, newcomer_id),
+            other => panic!("expected Join, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn remove_client_drops_it_and_notifies_remaining_peers() {
+        let server = SignalingServer::new();
+        let (a, mut a_rx) = test_client();
+        let a_id = a.id.clone();
+        server.add_client(a).await;
+
+        let (b, _b_rx) = test_client();
+        let b_id = b.id.clone();
+        server.add_client(b).await;
+        a_rx.recv().await.unwrap(); // drain the Join notification from b
+
+        server.remove_client(&b_id).await;
+
+        assert_eq!(server.get_all_client_ids().await, vec![a_id]);
+        match parse(a_rx.recv().await.unwrap()) {
+            SignalMessage::Leave { client_id } => assert_eq!(client_id, b_id),
+            other => panic!("expected Leave, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn send_to_client_delivers_to_known_id_and_fails_for_unknown() {
+        let server = SignalingServer::new();
+        let (client, mut rx) = test_client();
+        let id = client.id.clone();
+        server.add_client(client).await;
+
+        let msg = SignalMessage::Peers { peers: vec![] };
+        assert!(server.send_to_client(&id, msg).await);
+        assert!(matches!(parse(rx.recv().await.unwrap()), SignalMessage::Peers { .. }));
+
+        assert!(!server.send_to_client("no-such-client", SignalMessage::Peers { peers: vec![] }).await);
+    }
+
+    #[tokio::test]
+    async fn handle_message_forwards_offer_to_target_only() {
+        let server = SignalingServer::new();
+        let (a, mut a_rx) = test_client();
+        let a_id = a.id.clone();
+        server.add_client(a).await;
+
+        let (b, mut b_rx) = test_client();
+        let b_id = b.id.clone();
+        server.add_client(b).await;
+        a_rx.recv().await.unwrap(); // drain b's Join notification
+
+        server
+            .handle_message(
+                &a_id,
+                SignalMessage::Offer {
+                    from: a_id.clone(),
+                    to: b_id.clone(),
+                    sdp: "sdp".into(),
+                },
+            )
+            .await;
+
+        match parse(b_rx.recv().await.unwrap()) {
+            SignalMessage::Offer { from, to, .. } => {
+                assert_eq!(from, a_id);
+                assert_eq!(to, b_id);
+            }
+            other => panic!("expected Offer, got {other:?}"),
+        }
+        assert!(a_rx.try_recv().is_err(), "sender should not receive its own offer");
+    }
+}
