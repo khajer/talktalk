@@ -6,3 +6,14 @@ pub fn setup_logging() {
         .with_max_level(tracing::Level::INFO)
         .init();
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn setup_logging_does_not_panic() {
+        setup_logging();
+        tracing::info!("test log line");
+    }
+}
