@@ -52,6 +52,19 @@ INFO Starting signaling server at 127.0.0.1:8080
 INFO Server listening on 127.0.0.1:8080
 ```
 
+### Using the Makefile
+
+A `Makefile` is provided as a shortcut for common `cargo` commands:
+
+```bash
+make build    # cargo build
+make release  # cargo build --release
+make run      # cargo run
+make test     # cargo test
+make lint     # cargo clippy
+make fmt      # cargo fmt
+```
+
 ## Message Protocol
 
 All messages are sent as JSON with the following structure:
