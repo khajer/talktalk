@@ -52,6 +52,22 @@ INFO Starting signaling server at 127.0.0.1:8080
 INFO Server listening on 127.0.0.1:8080
 ```
 
+The bind address can be overridden with the `TALKTALK_HOST` environment variable, e.g. `TALKTALK_HOST=0.0.0.0:9000 cargo run`.
+
+### Running with Docker
+
+```bash
+docker-compose up --build
+```
+
+### Running with Podman
+
+```bash
+podman-compose up --build
+```
+
+Both start the server on `ws://localhost:8080`. The container binds to `0.0.0.0:8080` internally (set via `TALKTALK_HOST` in the compose file) so the published port is reachable from the host.
+
 ## Message Protocol
 
 All messages are sent as JSON with the following structure:

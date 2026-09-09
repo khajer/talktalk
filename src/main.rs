@@ -12,11 +12,11 @@ use signaling::{handle_connection, SignalingServer};
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     setup_logging();
 
-    let host = "127.0.0.1:8080";
+    let host = std::env::var("TALKTALK_HOST").unwrap_or_else(|_| "127.0.0.1:8080".to_string());
     info!("Starting signaling server at {}", host);
 
     let server = Arc::new(SignalingServer::new());
-    let listener = TcpListener::bind(host).await?;
+    let listener = TcpListener::bind(&host).await?;
 
     info!("Server listening on {}", host);
 
