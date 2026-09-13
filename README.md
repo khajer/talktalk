@@ -68,6 +68,19 @@ podman-compose up --build
 
 Both start the server on `ws://localhost:8080`. The container binds to `0.0.0.0:8080` internally (set via `TALKTALK_HOST` in the compose file) so the published port is reachable from the host.
 
+### Using the Makefile
+
+A `Makefile` is provided as a shortcut for common `cargo` commands:
+
+```bash
+make build    # cargo build
+make release  # cargo build --release
+make run      # cargo run
+make test     # cargo test
+make lint     # cargo clippy
+make fmt      # cargo fmt
+```
+
 ## Message Protocol
 
 All messages are sent as JSON with the following structure:
