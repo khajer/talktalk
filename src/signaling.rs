@@ -1,12 +1,12 @@
+use futures_util::SinkExt;
+use futures_util::stream::StreamExt;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
-use tokio::sync::{mpsc, RwLock};
+use tokio::sync::{RwLock, mpsc};
 use tokio_tungstenite::tungstenite::protocol::Message;
-use futures_util::stream::StreamExt;
-use futures_util::SinkExt;
-use tracing::{info, error, warn};
-use serde::{Deserialize, Serialize};
+use tracing::{error, info, warn};
 use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -33,17 +33,11 @@ pub enum SignalMessage {
         sdp_mline_index: Option<u16>,
     },
     #[serde(rename = "join")]
-    Join {
-        client_id: String,
-    },
+    Join { client_id: String },
     #[serde(rename = "leave")]
-    Leave {
-        client_id: String,
-    },
+    Leave { client_id: String },
     #[serde(rename = "peers")]
-    Peers {
-        peers: Vec<String>,
-    },
+    Peers { peers: Vec<String> },
 }
 
 #[derive(Clone)]
@@ -77,33 +71,35 @@ impl SignalingServer {
         let client_id = client.id.clone();
         clients.insert(client_id.clone(), client);
 
-
-        info!("Client connected: {client_id} (total: {})",  clients.len());
+        info!("Client connected: {client_id} (total: {})", clients.len());
         // Notify other clients about the new peer
         self.broadcast_to_others(
             &client_id,
             SignalMessage::Join {
                 client_id: client_id.clone(),
-            }
-        ).await;
+            },
+        )
+        .await;
     }
 
     async fn remove_client(&self, client_id: &str) {
         let mut clients = self.clients.write().await;
         if clients.remove(client_id).is_some() {
-            info!("Client disconnected: {client_id} (total: {})" , clients.len());
+            info!(
+                "Client disconnected: {client_id} (total: {})",
+                clients.len()
+            );
 
             // Notify other clients about the peer leaving
             self.broadcast_to_others(
                 client_id,
                 SignalMessage::Leave {
                     client_id: client_id.to_string(),
-                }
-            ).await;
+                },
+            )
+            .await;
         }
     }
-
-
 
     async fn get_all_client_ids(&self) -> Vec<String> {
         let clients = self.clients.read().await;
@@ -121,10 +117,12 @@ impl SignalingServer {
         };
 
         for (id, client) in clients.iter() {
-            if id != from_client_id {
-                if let Err(e) = client.sender.send(Message::Text(message_json.clone().into())) {
-                    error!("Failed to send message to {}: {:?}", id, e);
-                }
+            if id != from_client_id
+                && let Err(e) = client
+                    .sender
+                    .send(Message::Text(message_json.clone().into()))
+            {
+                error!("Failed to send message to {}: {:?}", id, e);
             }
         }
     }
@@ -154,13 +152,16 @@ impl SignalingServer {
 
     async fn handle_message(&self, from_client_id: &str, message: SignalMessage) {
         match message {
-            SignalMessage::Offer { ref to, .. } |
-            SignalMessage::Answer { ref to, .. } |
-            SignalMessage::IceCandidate { ref to, .. } => {
+            SignalMessage::Offer { ref to, .. }
+            | SignalMessage::Answer { ref to, .. }
+            | SignalMessage::IceCandidate { ref to, .. } => {
                 // Forward to specific client
                 let target_id = to.clone();
                 if !self.send_to_client(&target_id, message).await {
-                    warn!("Failed to send message to client {} (not found or disconnected)", target_id);
+                    warn!(
+                        "Failed to send message to client {} (not found or disconnected)",
+                        target_id
+                    );
                 }
             }
             SignalMessage::Join { .. } | SignalMessage::Leave { .. } => {
@@ -205,7 +206,9 @@ pub async fn handle_connection(
                     if let Message::Text(text) = message {
                         match serde_json::from_str::<SignalMessage>(&text) {
                             Ok(signal_msg) => {
-                                server_clone.handle_message(&client_id_clone, signal_msg).await;
+                                server_clone
+                                    .handle_message(&client_id_clone, signal_msg)
+                                    .await;
                             }
                             Err(e) => {
                                 error!("Failed to parse signal message: {:?}", e);
@@ -255,7 +258,9 @@ mod tests {
     }
 
     fn parse(msg: Message) -> SignalMessage {
-        let Message::Text(text) = msg else { panic!("expected text frame") };
+        let Message::Text(text) = msg else {
+            panic!("expected text frame")
+        };
         serde_json::from_str(&text).unwrap()
     }
 
@@ -327,9 +332,16 @@ mod tests {
 
         let msg = SignalMessage::Peers { peers: vec![] };
         assert!(server.send_to_client(&id, msg).await);
-        assert!(matches!(parse(rx.recv().await.unwrap()), SignalMessage::Peers { .. }));
+        assert!(matches!(
+            parse(rx.recv().await.unwrap()),
+            SignalMessage::Peers { .. }
+        ));
 
-        assert!(!server.send_to_client("no-such-client", SignalMessage::Peers { peers: vec![] }).await);
+        assert!(
+            !server
+                .send_to_client("no-such-client", SignalMessage::Peers { peers: vec![] })
+                .await
+        );
     }
 
     #[tokio::test]
@@ -362,6 +374,9 @@ mod tests {
             }
             other => panic!("expected Offer, got {other:?}"),
         }
-        assert!(a_rx.try_recv().is_err(), "sender should not receive its own offer");
+        assert!(
+            a_rx.try_recv().is_err(),
+            "sender should not receive its own offer"
+        );
     }
 }
