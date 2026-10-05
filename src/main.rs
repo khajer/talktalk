@@ -3,10 +3,10 @@ mod signaling;
 
 use std::sync::Arc;
 use tokio::net::TcpListener;
-use tracing::{info, error};
+use tracing::{error, info};
 
 use logging::setup_logging;
-use signaling::{handle_connection, SignalingServer};
+use signaling::{SignalingServer, handle_connection};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
